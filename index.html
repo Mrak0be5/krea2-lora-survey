@@ -29,6 +29,8 @@
   .mine, .better { border-radius:999px; padding:4px 10px; font-size:13px; }
   .mine.on, .better.on { background:#d7c4a3; color:#1a1612; }
   .delta { display:block; margin-top:4px; }
+  #export-box { margin:0 0 18px; }
+  #export-text { width:100%; min-height:220px; margin:8px 0; padding:12px; border:1px solid var(--line); border-radius:12px; background:#0c0b0a; color:var(--ink); font:14px/1.45 Consolas, monospace; }
   figcaption { font-size:12px; margin-top:4px; }
   a { color:#e7d3b0; }
   @media (max-width: 800px) { .grid { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
@@ -45,9 +47,15 @@
     <button data-f="skip">Не нужна 15</button>
     <button data-f="harm">Портит 4</button>
     <button data-f="mine">Мои 0</button>
+    <button type="button" id="export-marks">Текст для агента</button>
     <button type="button" id="clear-marks">Сбросить пометки</button>
   </div>
-  <p class="lead">«Хорошая» и «Этот лучше» — ваша пометка, она остаётся в этом браузере. Рамка на кадре — мой выбор. Под каждым кадром написано, менялся ли промпт относительно страницы Civitai.</p>
+  <div id="export-box" hidden>
+    <p class="lead">Скопируйте текст и пришлите его в чат. В нём ваши хорошие лоры и кадры, которые вы отметили как лучшие.</p>
+    <textarea id="export-text" readonly></textarea>
+    <button type="button" id="copy-export">Скопировать</button>
+  </div>
+  <p class="lead">«Хорошая» и «Этот лучше» остаются в этом браузере. «Текст для агента» собирает их в сообщение. Рамка на кадре — мой выбор. Под каждым кадром написано, менялся ли промпт относительно страницы Civitai.</p>
   <article class="card" data-v="use" data-lora="nelson" id="nelson">
 <header><h2 class="file">Full_Nelson_Reverse_Cowgirl_Anal_V1.safetensors</h2><div class="tools"><button type="button" class="mine" data-lora="nelson">Хорошая</button><span class="badge use">Стоит</span></div></header>
 <p class="meta">Reverse Cowgirl Anal / Full Nelson - Krea 2 - SDXL · сила 0.8 · euler · сиды 101–110 · <a href="https://civitai.com/models/199865?modelVersionId=3127220">Civitai</a></p>
@@ -384,6 +392,48 @@
   document.getElementById("clear-marks").addEventListener("click", () => {
     localStorage.removeItem(KEY);
     apply();
+  });
+  const report = () => {
+    const state = loadMarks();
+    const good = [];
+    const shotsOnly = [];
+    document.querySelectorAll(".card").forEach((card) => {
+      const id = card.dataset.lora;
+      const file = card.querySelector(".file").textContent;
+      const seeds = Object.entries(state.shots[id] || {})
+        .filter(([, on]) => on)
+        .map(([seed]) => "s" + seed)
+        .sort();
+      if (state.loras[id]) good.push({ file, id, seeds });
+      else if (seeds.length) shotsOnly.push({ file, id, seeds });
+    });
+    const lines = ["Мои пометки Krea2 turbo. Хорошая = эта лора мне нравится. Этот лучше = эти кадры лучше остальных."];
+    if (!good.length && !shotsOnly.length) return lines.concat("", "Пометок нет.").join("\n");
+    lines.push("", "Хорошие лоры:");
+    if (!good.length) lines.push("- нет");
+    for (const row of good) {
+      lines.push("- " + row.file + " (" + row.id + ")" + (row.seeds.length ? " лучшие кадры: " + row.seeds.join(", ") : " кадры не выбраны"));
+    }
+    lines.push("", "Кадры лучше, лора не отмечена хорошей:");
+    if (!shotsOnly.length) lines.push("- нет");
+    for (const row of shotsOnly) lines.push("- " + row.file + " (" + row.id + ") " + row.seeds.join(", "));
+    return lines.join("\n");
+  };
+  const exportBox = document.getElementById("export-box");
+  const exportText = document.getElementById("export-text");
+  document.getElementById("export-marks").addEventListener("click", async () => {
+    exportText.value = report();
+    exportBox.hidden = false;
+    exportText.focus();
+    exportText.select();
+    try { await navigator.clipboard.writeText(exportText.value); }
+    catch { /* выбор в поле остаётся, если браузер не дал буфер */ }
+  });
+  document.getElementById("copy-export").addEventListener("click", async () => {
+    exportText.focus();
+    exportText.select();
+    try { await navigator.clipboard.writeText(exportText.value); }
+    catch { /* текст уже выделен */ }
   });
   apply();
 </script>
